@@ -1,4 +1,4 @@
-import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type QuestionMap,
   type SystemOneCallOptions,
@@ -96,7 +96,7 @@ export class DebugHistory {
 
 export function observedProvider(
   session: SessionConfig,
-  ctx: ExtensionToolContext,
+  ctx: ExtensionContext,
   history: DebugHistory,
 ): SystemOneProvider {
   return {

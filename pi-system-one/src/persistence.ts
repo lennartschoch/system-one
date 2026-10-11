@@ -19,7 +19,7 @@ function validate(value: unknown, path: string): StoredConfig {
       `Invalid System One settings in ${path}: apiKey must stay in Pi credentials or environment`,
     );
   for (const key of Object.keys(v)) {
-    if (!["mode", "baseUrl", "model", "timeoutMs"].includes(key))
+    if (!["mode", "baseUrl", "model", "timeoutMs", "autoJudge"].includes(key))
       throw new Error(`Invalid System One settings in ${path}: unknown field`);
   }
   if (v.mode !== undefined && !MODES.includes(v.mode as ConfigMode))
@@ -66,6 +66,45 @@ function validate(value: unknown, path: string): StoredConfig {
     throw new Error(
       `Invalid System One settings in ${path}: timeoutMs must be positive`,
     );
+  if (v.autoJudge !== undefined) {
+    if (
+      typeof v.autoJudge !== "object" ||
+      v.autoJudge === null ||
+      Array.isArray(v.autoJudge)
+    )
+      throw new Error(
+        `Invalid System One settings in ${path}: autoJudge must be an object`,
+      );
+    const aj = v.autoJudge as Record<string, unknown>;
+    for (const key of Object.keys(aj)) {
+      if (!["enabled", "maxPromptChars", "timeoutMs"].includes(key))
+        throw new Error(
+          `Invalid System One settings in ${path}: unknown autoJudge field`,
+        );
+    }
+    if (aj.enabled !== undefined && typeof aj.enabled !== "boolean")
+      throw new Error(
+        `Invalid System One settings in ${path}: autoJudge.enabled must be a boolean`,
+      );
+    if (
+      aj.maxPromptChars !== undefined &&
+      (typeof aj.maxPromptChars !== "number" ||
+        !Number.isInteger(aj.maxPromptChars) ||
+        aj.maxPromptChars <= 0)
+    )
+      throw new Error(
+        `Invalid System One settings in ${path}: autoJudge.maxPromptChars must be a positive integer`,
+      );
+    if (
+      aj.timeoutMs !== undefined &&
+      (typeof aj.timeoutMs !== "number" ||
+        !Number.isFinite(aj.timeoutMs) ||
+        aj.timeoutMs <= 0)
+    )
+      throw new Error(
+        `Invalid System One settings in ${path}: autoJudge.timeoutMs must be positive`,
+      );
+  }
   if (v.mode === "custom" && !v.baseUrl)
     throw new Error(
       `Invalid System One settings in ${path}: custom mode needs baseUrl`,

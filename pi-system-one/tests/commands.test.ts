@@ -402,12 +402,12 @@ describe("so command", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  it("completes config + status + debug, case-insensitively", () => {
+  it("completes config + status + debug + auto-judge, case-insensitively", () => {
     const { pi, cap } = harness();
     registerSystemOneCommands(pi, {});
     assert.deepEqual(
       cap.completions?.("").map((c) => c.value),
-      ["config", "status", "debug"],
+      ["config", "status", "debug", "auto-judge"],
     );
     assert.deepEqual(
       cap.completions?.("S").map((c) => c.value),

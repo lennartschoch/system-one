@@ -1,4 +1,4 @@
-import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   HttpSystemOneProvider,
   type QuestionMap,
@@ -47,11 +47,11 @@ function nativeFailure(
 
 class PiNativeProvider implements SystemOneProvider {
   readonly id = "pi-native";
-  private readonly ctx: ExtensionToolContext;
+  private readonly ctx: ExtensionContext;
   private readonly timeoutMs: number;
   private readonly onDispatch?: () => void;
   constructor(
-    ctx: ExtensionToolContext,
+    ctx: ExtensionContext,
     timeoutMs: number,
     onDispatch?: () => void,
   ) {
@@ -128,7 +128,7 @@ class PiNativeProvider implements SystemOneProvider {
         ? request.state
         : { state: request.state };
     let result: Awaited<
-      ReturnType<ExtensionToolContext["modelRegistry"]["classify"]>
+      ReturnType<ExtensionContext["modelRegistry"]["classify"]>
     >;
     try {
       this.onDispatch?.();
@@ -209,12 +209,12 @@ export type RouteObserver = (
 class AutoSystemOneProvider implements SystemOneProvider {
   readonly id = "auto";
   private readonly session: SessionConfig;
-  private readonly ctx: ExtensionToolContext;
+  private readonly ctx: ExtensionContext;
   private readonly onRoute?: RouteObserver;
   private readonly onDispatch?: () => void;
   constructor(
     session: SessionConfig,
-    ctx: ExtensionToolContext,
+    ctx: ExtensionContext,
     onRoute?: RouteObserver,
     onDispatch?: () => void,
   ) {
@@ -274,7 +274,7 @@ class AutoSystemOneProvider implements SystemOneProvider {
 /** Resolve credentials at call time. Never forward Pi's TypeSafe key to a custom origin. */
 export async function resolveSessionProvider(
   session: SessionConfig,
-  ctx: ExtensionToolContext,
+  ctx: ExtensionContext,
   onRoute?: RouteObserver,
   onDispatch?: () => void,
 ): Promise<SystemOneProvider> {

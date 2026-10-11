@@ -89,6 +89,54 @@ A current-session selection takes effect immediately. Saved mode and saved custo
 
 ---
 
+## Auto-judge (opt-in)
+
+Off by default. When enabled, pi-system-one asks the configured endpoint two
+fixed questions about each user prompt -- `risk` (low/medium/high) and
+`needs_planning` (yes/no) -- before the agent runs, and appends one line to the
+prompt guidelines, for example:
+
+```
+System One auto-judge (opt-in): risk=high (p=0.85), needs_planning=yes (p=0.90). Treat accordingly: plan first, and confirm before destructive steps.
+```
+
+Enable it for the session, persistently, or via the environment:
+
+```
+/so auto-judge on      # enable (saved)
+/so auto-judge off     # disable (saved)
+/so auto-judge         # show current state
+```
+
+```bash
+export SYSTEM_ONE_AUTO_JUDGE=1
+```
+
+A saved value wins over the environment.
+
+- **Cost:** one provider call per user turn, with its own shorter timeout
+  (default 5000ms, versus the tool's 10000ms). That per-turn latency is why it
+  is never the default.
+- **Fail-open:** an unreachable endpoint, timeout, or malformed response injects
+  nothing; the turn proceeds unchanged.
+- **Only decisive readings are injected:** if neither answer reaches 0.6
+  probability, nothing is added, so a coin-flip reading never reaches the model.
+- **Prompt size:** the prompt sent is capped at `maxPromptChars` (default 4000).
+- **Scope:** it uses the same provider as the tool (including a `custom`
+  endpoint or the `native` classifier) and appears in `/so debug`.
+
+Saved settings are non-secret, alongside the others:
+
+```json
+{ "autoJudge": { "enabled": true, "maxPromptChars": 4000, "timeoutMs": 5000 } }
+```
+
+This is separate from the per-request `auto` mode: `auto` chooses a backend per
+call, while auto-judge classifies *the user's prompt* and feeds the reading back
+into the prompt. Both are opt-in; neither changes defaults.
+
+---
+
 ## `/judge`
 
 The fastest way to use System One. A prompt shortcut that expands into

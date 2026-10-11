@@ -11,6 +11,7 @@ export interface SystemOneEnv {
   SYSTEM_ONE_API_KEY?: string;
   SYSTEM_ONE_MODEL?: string;
   SYSTEM_ONE_TIMEOUT_MS?: string;
+  SYSTEM_ONE_AUTO_JUDGE?: string;
 }
 
 export interface SystemOneExtConfig {
@@ -42,12 +43,53 @@ export function isTypeSafeEndpoint(baseUrl: string): boolean {
 
 export type ConfigMode = "typesafe" | "custom" | "native" | "auto";
 
+export const AUTO_JUDGE_DEFAULT_MAX_PROMPT_CHARS = 4_000;
+export const AUTO_JUDGE_DEFAULT_TIMEOUT_MS = 5_000;
+
+/**
+ * Opt-in per-turn judge. Disabled by default: it adds one provider call of
+ * latency to every user turn, so it must be enabled explicitly (env
+ * `SYSTEM_ONE_AUTO_JUDGE=1` or `/so auto-judge on`).
+ */
+export interface AutoJudgeConfig {
+  enabled: boolean;
+  /** Maximum characters of the user prompt sent to the endpoint. */
+  maxPromptChars: number;
+  /** Per-call timeout for the judge (usually shorter than the tool's). */
+  timeoutMs: number;
+}
+
+/** Public settings only. Credentials never belong in this file. */
+export interface StoredAutoJudge {
+  enabled?: boolean;
+  maxPromptChars?: number;
+  timeoutMs?: number;
+}
+
 /** Public settings only. Credentials never belong in this file. */
 export interface StoredConfig {
   mode?: ConfigMode;
   baseUrl?: string;
   model?: string;
   timeoutMs?: number;
+  autoJudge?: StoredAutoJudge;
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  return value === "1" || value?.toLowerCase() === "true";
+}
+
+/** Resolve the auto-judge config. A saved value wins over the environment. */
+export function resolveAutoJudge(
+  env: SystemOneEnv,
+  stored: StoredAutoJudge = {},
+): AutoJudgeConfig {
+  return {
+    enabled: stored.enabled ?? isTruthyEnv(env.SYSTEM_ONE_AUTO_JUDGE),
+    maxPromptChars:
+      stored.maxPromptChars ?? AUTO_JUDGE_DEFAULT_MAX_PROMPT_CHARS,
+    timeoutMs: stored.timeoutMs ?? AUTO_JUDGE_DEFAULT_TIMEOUT_MS,
+  };
 }
 
 export function loadSystemOneConfig(
@@ -79,6 +121,8 @@ export interface SessionConfig {
   mode: ConfigMode;
   modeSource: "session" | "saved" | "environment" | "default";
   ignoredEnvironmentEndpoint: boolean;
+  /** Opt-in per-turn judge settings. */
+  autoJudge: AutoJudgeConfig;
 }
 
 export function createSessionConfig(
@@ -141,6 +185,7 @@ export function createSessionConfig(
       timeoutMs: rawTimeout,
     },
     keyInMemory: false,
+    autoJudge: resolveAutoJudge(env, stored.autoJudge),
   };
 }
 
@@ -157,6 +202,7 @@ export function blankSession(): SessionConfig {
     mode: "custom",
     modeSource: "default",
     ignoredEnvironmentEndpoint: false,
+    autoJudge: resolveAutoJudge({}),
   };
 }
 
@@ -220,5 +266,8 @@ export function describeConfig(session: SessionConfig): string {
     keyLine,
     `  model: ${c.model ?? "server default"}`,
     `  timeout: ${c.timeoutMs}ms`,
+    session.autoJudge.enabled
+      ? `  auto-judge: on (each user turn; max ${session.autoJudge.maxPromptChars} chars, ${session.autoJudge.timeoutMs}ms)`
+      : "  auto-judge: off (opt-in)",
   ].join("\n");
 }

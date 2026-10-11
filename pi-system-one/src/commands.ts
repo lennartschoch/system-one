@@ -2,6 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
+import { registerAutoJudge } from "./auto-judge.ts";
 import {
   applyConfigAnswers,
   type ConfigMode,
@@ -42,6 +43,33 @@ export function registerSystemOneCommands(
           ),
       }),
     );
+    // Opt-in per-turn judge (disabled unless enabled via /so auto-judge or
+    // SYSTEM_ONE_AUTO_JUDGE). Shares the tool's provider and debug history.
+    registerAutoJudge(pi, {
+      session: () => store.session,
+      resolveProvider: (session, ctx) =>
+        observedProvider(session, ctx, history),
+    });
+  }
+
+  /** Persist the public settings (never credentials). */
+  function persist(session: SessionConfig): void {
+    if (!configPath) return;
+    saveStoredConfig(configPath, {
+      mode: session.mode,
+      ...(session.mode === "custom"
+        ? {
+            baseUrl: session.current.baseUrl,
+            ...(session.current.model ? { model: session.current.model } : {}),
+          }
+        : {}),
+      timeoutMs: session.current.timeoutMs,
+      autoJudge: {
+        enabled: session.autoJudge.enabled,
+        maxPromptChars: session.autoJudge.maxPromptChars,
+        timeoutMs: session.autoJudge.timeoutMs,
+      },
+    });
   }
 
   async function cmdConfig(
@@ -86,6 +114,7 @@ export function registerSystemOneCommands(
       modeSource: "session",
       ignoredEnvironmentEndpoint: false,
       keyInMemory: current.keyInMemory,
+      autoJudge: current.autoJudge,
     };
     if (mode === "typesafe" || mode === "auto") {
       next.current.baseUrl = TYPESAFE_BASE_URL;
@@ -165,16 +194,7 @@ export function registerSystemOneCommands(
     );
     if (configPath) {
       try {
-        saveStoredConfig(configPath, {
-          mode,
-          ...(mode === "custom"
-            ? {
-                baseUrl: next.current.baseUrl,
-                ...(next.current.model ? { model: next.current.model } : {}),
-              }
-            : {}),
-          timeoutMs: next.current.timeoutMs,
-        });
+        persist(next);
       } catch (error) {
         ctx.ui.notify(
           `Could not save settings: ${error instanceof Error ? error.message : String(error)}`,
@@ -230,17 +250,55 @@ export function registerSystemOneCommands(
     );
   }
 
+  async function cmdAutoJudge(
+    ctx: ExtensionCommandContext,
+    arg?: string,
+  ): Promise<void> {
+    const current = store.session ?? createSessionConfig();
+    const want = arg?.trim().toLowerCase();
+    if (want !== "on" && want !== "off") {
+      ctx.ui.notify(
+        `Auto-judge is ${current.autoJudge.enabled ? "on" : "off"}. Use /so auto-judge on|off.`,
+        "info",
+      );
+      return;
+    }
+    const next: SessionConfig = {
+      ...current,
+      autoJudge: { ...current.autoJudge, enabled: want === "on" },
+    };
+    if (configPath) {
+      try {
+        persist(next);
+      } catch (error) {
+        ctx.ui.notify(
+          `Could not save settings: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+        return;
+      }
+    }
+    store.session = next;
+    ctx.ui.notify(
+      want === "on"
+        ? "Auto-judge on: one judge call per user turn before the agent runs."
+        : "Auto-judge off.",
+      "info",
+    );
+  }
+
   pi.registerCommand("so", {
     description: "System One config (/so status for current)",
     getArgumentCompletions: (prefix: string) =>
-      ["config", "status", "debug"]
+      ["config", "status", "debug", "auto-judge"]
         .filter((c) => c.startsWith(prefix.trim().toLowerCase()))
         .map((c) => ({ value: c, label: c })),
     handler: async (args, ctx) => {
-      const [cmd, mode] = args.trim().toLowerCase().split(/\s+/);
+      const [cmd, arg] = args.trim().toLowerCase().split(/\s+/);
       if (cmd === "status") await cmdStatus(ctx);
       else if (cmd === "debug") await cmdDebug(ctx);
-      else await cmdConfig(ctx, cmd === "config" ? mode : undefined);
+      else if (cmd === "auto-judge") await cmdAutoJudge(ctx, arg);
+      else await cmdConfig(ctx, cmd === "config" ? arg : undefined);
     },
   });
   return { applyProvider, store };
