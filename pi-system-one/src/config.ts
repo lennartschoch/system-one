@@ -11,6 +11,7 @@ export interface SystemOneEnv {
   SYSTEM_ONE_API_KEY?: string;
   SYSTEM_ONE_MODEL?: string;
   SYSTEM_ONE_TIMEOUT_MS?: string;
+  SYSTEM_ONE_NATIVE_MODEL?: string;
 }
 
 export interface SystemOneExtConfig {
@@ -18,6 +19,8 @@ export interface SystemOneExtConfig {
   apiKey?: string;
   model?: string;
   timeoutMs: number;
+  /** Native-mode classifier as `<provider>/<id>`. Unset = auto-discover. */
+  nativeModel?: string;
 }
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
@@ -68,6 +71,7 @@ export function loadSystemOneConfig(
     apiKey: env.SYSTEM_ONE_API_KEY || undefined,
     model: env.SYSTEM_ONE_MODEL || undefined,
     timeoutMs,
+    nativeModel: env.SYSTEM_ONE_NATIVE_MODEL || undefined,
   };
 }
 
@@ -139,6 +143,7 @@ export function createSessionConfig(
                   ? env.SYSTEM_ONE_MODEL
                   : undefined) || stored.model,
       timeoutMs: rawTimeout,
+      nativeModel: env.SYSTEM_ONE_NATIVE_MODEL || undefined,
     },
     keyInMemory: false,
   };
@@ -152,6 +157,7 @@ export function blankSession(): SessionConfig {
       apiKey: undefined,
       model: undefined,
       timeoutMs: DEFAULT_TIMEOUT_MS,
+      nativeModel: undefined,
     },
     keyInMemory: false,
     mode: "custom",
@@ -219,6 +225,11 @@ export function describeConfig(session: SessionConfig): string {
     `  ${session.mode === "auto" ? "HTTP fallback endpoint" : "endpoint"}: ${c.baseUrl || "none"}`,
     keyLine,
     `  model: ${c.model ?? "server default"}`,
+    ...(session.mode === "native"
+      ? [
+          `  native classifier: ${c.nativeModel ?? "auto (first available decision classifier)"}`,
+        ]
+      : []),
     `  timeout: ${c.timeoutMs}ms`,
   ].join("\n");
 }

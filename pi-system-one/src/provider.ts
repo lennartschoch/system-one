@@ -45,18 +45,62 @@ function nativeFailure(
   );
 }
 
+/** Native decision models speak the System One API (Jev, Clef, llama.cpp decision models). */
+const NATIVE_DECISION_API = "typesafe-system-one";
+
+/**
+ * Pick the Pi classifier for native mode:
+ *   1. an explicit `SYSTEM_ONE_NATIVE_MODEL=<provider>/<id>`, when set;
+ *   2. otherwise an available native decision classifier, preferring TypeSafe
+ *      Jev, then any other (e.g. a llama.cpp router's Clef) so native mode is
+ *      not exclusive to TypeSafe;
+ *   3. otherwise the TypeSafe Jev default, for registries that do not expose
+ *      classifier listing.
+ * Returns undefined when nothing resolves.
+ */
+async function resolveNativeClassifier(
+  ctx: ExtensionToolContext,
+  override?: string,
+) {
+  const registry = ctx.modelRegistry;
+  if (override !== undefined) {
+    const slash = override.indexOf("/");
+    if (slash <= 0 || slash === override.length - 1) return undefined;
+    return registry.findOfType(
+      "classifier",
+      override.slice(0, slash),
+      override.slice(slash + 1),
+    );
+  }
+  if (typeof registry.getAvailableOfType === "function") {
+    const available = await registry.getAvailableOfType("classifier");
+    const availableJev = available.find(
+      (m) => m.provider === "typesafe" && m.id === "jev-latest",
+    );
+    if (availableJev) return availableJev;
+    const availableDecision = available.find(
+      (m) => m.api === NATIVE_DECISION_API,
+    );
+    if (availableDecision) return availableDecision;
+  }
+  return registry.findOfType("classifier", "typesafe", "jev-latest");
+}
+
 class PiNativeProvider implements SystemOneProvider {
   readonly id = "pi-native";
   private readonly ctx: ExtensionToolContext;
   private readonly timeoutMs: number;
+  private readonly nativeModel?: string;
   private readonly onDispatch?: () => void;
   constructor(
     ctx: ExtensionToolContext,
     timeoutMs: number,
+    nativeModel?: string,
     onDispatch?: () => void,
   ) {
     this.ctx = ctx;
     this.timeoutMs = timeoutMs;
+    this.nativeModel = nativeModel;
     this.onDispatch = onDispatch;
   }
 
@@ -64,15 +108,11 @@ class PiNativeProvider implements SystemOneProvider {
     request: SystemOneRequest<Q>,
     options?: SystemOneCallOptions,
   ): Promise<SystemOneResponse<Q>> {
-    const model = this.ctx.modelRegistry?.findOfType?.(
-      "classifier",
-      "typesafe",
-      "jev-latest",
-    );
+    const model = await resolveNativeClassifier(this.ctx, this.nativeModel);
     if (!model)
       throw new PiNativeDiagnosticError(
         "native model unavailable",
-        "Pi classifier jev-latest unavailable. Use /so config to select TypeSafe HTTP instead.",
+        "No Pi classifier is available. Sign in (/login typesafe), set SYSTEM_ONE_NATIVE_MODEL=<provider>/<id>, or use /so config to select a System One endpoint.",
       );
     const questions: Record<string, unknown> = Object.create(null);
     for (const [id, question] of Object.entries(request.questions)) {
@@ -229,18 +269,18 @@ class AutoSystemOneProvider implements SystemOneProvider {
     options?: SystemOneCallOptions,
   ): Promise<SystemOneResponse<Q>> {
     const compatible = supportsNative(request);
-    if (
-      compatible &&
-      this.ctx.modelRegistry?.findOfType?.(
-        "classifier",
-        "typesafe",
-        "jev-latest",
-      )
-    ) {
+    const native = compatible
+      ? await resolveNativeClassifier(
+          this.ctx,
+          this.session.current.nativeModel,
+        )
+      : undefined;
+    if (native) {
       this.onRoute?.("pi-native", "compatible request");
       return new PiNativeProvider(
         this.ctx,
         this.session.current.timeoutMs,
+        this.session.current.nativeModel,
         this.onDispatch,
       ).evaluate(request, options);
     }
@@ -280,7 +320,12 @@ export async function resolveSessionProvider(
 ): Promise<SystemOneProvider> {
   if (session.mode === "native") {
     onRoute?.("pi-native", "selected mode");
-    return new PiNativeProvider(ctx, session.current.timeoutMs, onDispatch);
+    return new PiNativeProvider(
+      ctx,
+      session.current.timeoutMs,
+      session.current.nativeModel,
+      onDispatch,
+    );
   }
   if (session.mode === "auto")
     return new AutoSystemOneProvider(session, ctx, onRoute, onDispatch);
